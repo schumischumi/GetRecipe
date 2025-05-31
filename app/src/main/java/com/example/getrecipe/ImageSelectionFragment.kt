@@ -1,21 +1,16 @@
 package com.example.getrecipe // Your package name
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.provider.MediaStore
 import android.util.Log
 import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,15 +26,14 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class FirstFragment : Fragment() {
+class ImageSelectionFragment : Fragment() {
 
     private var _binding: FragmentFirstBinding? = null
     private val binding get() = _binding!!
 
-    private var currentPhotoUri: Uri? = null // To store URI from camera or picker
-    private var tempImageFileForCamera: File? = null // To store file path for camera
+    private var currentPhotoUri: Uri? = null
+    private var tempImageFileForCamera: File? = null
 
-    // ActivityResultLaunchers
     private lateinit var requestCameraPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var takePictureLauncher: ActivityResultLauncher<Uri>
     private lateinit var selectImageLauncher: ActivityResultLauncher<String>
@@ -48,15 +42,14 @@ class FirstFragment : Fragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Initialize Camera Permission Launcher
         requestCameraPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { isGranted: Boolean ->
             if (isGranted) {
-                Log.d("FirstFragment", "Camera permission granted")
+                Log.d("ImageSelectionFragment", "Camera permission granted")
                 openCamera()
             } else {
-                Log.d("FirstFragment", "Camera permission denied")
+                Log.d("ImageSelectionFragment", "Camera permission denied")
                 Toast.makeText(requireContext(), "Camera permission is required to take photos.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -66,7 +59,7 @@ class FirstFragment : Fragment() {
             ActivityResultContracts.TakePicture()
         ) { success: Boolean ->
             if (success) {
-                Log.d("FirstFragment", "Image captured successfully. URI: $currentPhotoUri, File: ${tempImageFileForCamera?.absolutePath}")
+                Log.d("ImageSelectionFragment", "Image captured successfully. URI: $currentPhotoUri, File: ${tempImageFileForCamera?.absolutePath}")
                 currentPhotoUri = Uri.fromFile(tempImageFileForCamera) // Ensure currentPhotoUri is set from the file
                 binding.imageViewPreview.load(currentPhotoUri) {
                     placeholder(R.drawable.ic_launcher_background) // Optional placeholder
@@ -74,7 +67,7 @@ class FirstFragment : Fragment() {
                 }
                 binding.buttonNext.isEnabled = true
             } else {
-                Log.d("FirstFragment", "Image capture failed or was cancelled.")
+                Log.d("ImageSelectionFragment", "Image capture failed or was cancelled.")
                 // tempImageFileForCamera might still exist, consider deleting if not needed
                 // tempImageFileForCamera?.delete()
             }
@@ -85,14 +78,14 @@ class FirstFragment : Fragment() {
             ActivityResultContracts.GetContent()
         ) { uri: Uri? ->
             uri?.let {
-                Log.d("FirstFragment", "Image selected from storage: $it")
+                Log.d("ImageSelectionFragment", "Image selected from storage: $it")
                 currentPhotoUri = it
                 binding.imageViewPreview.load(currentPhotoUri) {
                     placeholder(R.drawable.ic_launcher_background)
                     error(com.google.android.material.R.drawable.mtrl_ic_error)
                 }
                 binding.buttonNext.isEnabled = true
-            } ?: Log.d("FirstFragment", "No image selected from storage.")
+            } ?: Log.d("ImageSelectionFragment", "No image selected from storage.")
         }
     }
 
@@ -116,13 +109,10 @@ class FirstFragment : Fragment() {
 
         binding.buttonNext.setOnClickListener {
             currentPhotoUri?.let { uri ->
-                val action = FirstFragmentDirections.actionFirstFragmentToCroppingFragment(uri.toString())
+                val action = ImageSelectionFragmentDirections.actionFirstFragmentToCroppingFragment(uri.toString())
                 findNavController().navigate(action)
             } ?: Toast.makeText(requireContext(), "Please select an image first.", Toast.LENGTH_SHORT).show()
         }
-
-        // If you want to load a default image on startup (optional)
-        // loadDefaultImage()
     }
 
     private fun showImageSourceDialog() {
@@ -175,11 +165,11 @@ class FirstFragment : Fragment() {
                     authority, // Make sure this matches AndroidManifest
                     file
                 )
-                Log.d("FirstFragment", "FileProvider URI for camera: $currentPhotoUri")
+                Log.d("ImageSelectionFragment", "FileProvider URI for camera: $currentPhotoUri")
                 takePictureLauncher.launch(currentPhotoUri) // Pass the FileProvider URI to the camera
             }
         } catch (ex: IOException) {
-            Log.e("FirstFragment", "Error creating image file for camera", ex)
+            Log.e("ImageSelectionFragment", "Error creating image file for camera", ex)
             Toast.makeText(requireContext(), "Error preparing camera.", Toast.LENGTH_SHORT).show()
         }
     }
@@ -202,7 +192,7 @@ class FirstFragment : Fragment() {
         // but for getExternalFilesDir it's good practice.
         if (storageDir != null && !storageDir.exists()) {
             if (!storageDir.mkdirs()) {
-                Log.e("FirstFragment", "Failed to create directory for images: ${storageDir.absolutePath}")
+                Log.e("ImageSelectionFragment", "Failed to create directory for images: ${storageDir.absolutePath}")
                 // Fallback to cacheDir if primary external dir fails and is not null
                 // Or simply throw IOException if this path is critical
             }
@@ -215,30 +205,9 @@ class FirstFragment : Fragment() {
             storageDir    /* directory, falls back to cache if storageDir is null or fails */
                 ?: context.cacheDir // Fallback to internal cache if external is unavailable
         )
-        Log.d("FirstFragment", "Image file created at: ${imageFile.absolutePath}")
+        Log.d("ImageSelectionFragment", "Image file created at: ${imageFile.absolutePath}")
         return imageFile
     }
-
-
-    // Optional: If you still want to load the default "good_example.jpg" from assets
-    // private fun loadDefaultImage() {
-    //     val defaultImageFileName = "good_example.jpg"
-    //     try {
-    //         val inputStream = requireContext().assets.open(defaultImageFileName)
-    //         val tempFile = File(requireContext().cacheDir, defaultImageFileName)
-    //         tempFile.outputStream().use { fileOut ->
-    //             inputStream.copyTo(fileOut)
-    //         }
-    //         inputStream.close()
-    //         currentPhotoUri = Uri.fromFile(tempFile) // Or FileProvider.getUriForFile for sharing
-    //         binding.imageViewPreview.load(currentPhotoUri)
-    //         binding.buttonNext.isEnabled = true
-    //         Log.d("FirstFragment", "Loaded default image: $defaultImageFileName to ${currentPhotoUri}")
-    //     } catch (e: IOException) {
-    //         Log.e("FirstFragment", "Error loading default image from assets", e)
-    //         Toast.makeText(requireContext(), "Failed to load default image.", Toast.LENGTH_SHORT).show()
-    //     }
-    // }
 
     override fun onDestroyView() {
         super.onDestroyView()

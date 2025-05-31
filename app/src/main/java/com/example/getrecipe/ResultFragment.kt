@@ -16,10 +16,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 
-/**
- * A simple [Fragment] subclass as the second destination in the navigation.
- */
-class SecondFragment : Fragment() {
+class ResultFragment : Fragment() {
 
     private var _binding: FragmentSecondBinding? = null
     private lateinit var extractTextViewModel: ExtractText
@@ -258,7 +255,7 @@ class SecondFragment : Fragment() {
     }
 
 }
-// In SecondFragment.kt
+// In ResultFragment.kt
 private fun formatOcrList(rawText: String?): String {
     if (rawText.isNullOrBlank()) {
         return ""
@@ -332,7 +329,6 @@ fun Uri.toFileFromContentUri(context: Context): File? {
 
     return file
 }
-// In SecondFragment.kt or its utility file
 fun canOpenContentUri(context: Context, uri: Uri): Boolean {
     Log.d("UriCheck_Detail", "Attempting to open URI: $uri with context: $context")
     if (uri.scheme != "content") {
@@ -368,7 +364,6 @@ fun canOpenContentUri(context: Context, uri: Uri): Boolean {
         return false
     }
 }
-// Add this function to SecondFragment.kt or a relevant utility file
 
 /**
  * Makes common whitespace characters visible in a string for debugging.

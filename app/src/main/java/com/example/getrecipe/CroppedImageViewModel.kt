@@ -39,19 +39,8 @@ class RecipeAreasViewModel : ViewModel() { // Renamed for clarity
         if (uri == null) _cropError.value = null
     }
 
-    // --- Method to set all at once (optional) ---
-    fun setAllCroppedAreas(titleUri: Uri?, ingredientsUri: Uri?, preparationUri: Uri?) {
-        _croppedAreas.value = CropAreas(titleUri, ingredientsUri, preparationUri)
-    }
-
-
     fun setCropError(errorMessage: String?) {
         _cropError.value = errorMessage
-    }
-
-    fun clearAllReferences() {
-        _croppedAreas.value = null
-        _cropError.value = null
     }
 
     fun areAllAreasSet(): Boolean {

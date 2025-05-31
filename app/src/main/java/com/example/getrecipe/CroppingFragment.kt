@@ -14,8 +14,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.FileProvider
-import androidx.core.graphics.decodeBitmap
-import androidx.core.graphics.drawable.toBitmap
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 
@@ -29,9 +27,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.core.net.toUri
-
-// Assuming your Assets class for the source image
-// object Assets { ... }
 
 enum class CropStage {
     SELECTING_TITLE,
