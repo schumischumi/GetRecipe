@@ -65,6 +65,7 @@ class CroppingFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+
         originalBitmap = Assets.getImageBitmap(requireContext())
 
         if (originalBitmap != null) {
@@ -72,9 +73,10 @@ class CroppingFragment : Fragment() {
             setupManualSelection()
             updateUiForCurrentStage()
         } else {
-            // ... (handle image load error) ...
-            binding.buttonConfirmCurrentArea.isEnabled = false // Example for a confirm button
-            recipeAreasViewModel.setCropError("Failed to load source image.")
+            Log.e("CroppingFragment", "Failed to load originalBitmap. Check Assets.getImageBitmap implementation and logs.")
+            binding.buttonConfirmCurrentArea.isEnabled = false
+            recipeAreasViewModel.setCropError("Failed to load source image. Check logs for details.")
+            // You might want to display a more specific error to the user or take other actions
         }
 
         // Example: Assume you have a button like 'buttonConfirmCurrentArea'
@@ -97,6 +99,7 @@ class CroppingFragment : Fragment() {
             } else {
                 recipeAreasViewModel.setCropError("Not all areas have been selected yet.")
             }
+            findNavController().navigate(R.id.crop_to_second)
         }
     }
 
@@ -159,9 +162,39 @@ class CroppingFragment : Fragment() {
             // Save the cropped bitmap to a temporary file
             val areaName = currentCropStage.name.toLowerCase(Locale.ROOT)
             val tempCroppedFile = createTemporaryCroppedFile(areaName)
-            FileOutputStream(tempCroppedFile).use { out ->
-                croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            var saveSuccessful = false
+            try {
+                FileOutputStream(tempCroppedFile).use { out ->
+                    val success = croppedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+                    if (success) {
+                        Log.i("CroppingFragment", "Bitmap.compress successful for ${tempCroppedFile.name}")
+                        saveSuccessful = true
+                    } else {
+                        Log.e("CroppingFragment", "Bitmap.compress returned false for ${tempCroppedFile.name}. File might be incomplete or not correctly written.")
+                        // tempCroppedFile might exist but be invalid/empty
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("CroppingFragment", "IOException during FileOutputStream for ${tempCroppedFile.name}", e)
+                // saveSuccessful remains false
             }
+
+            if (saveSuccessful && tempCroppedFile.exists()) {
+                val fileSize = tempCroppedFile.length()
+                Log.i("CroppingFragment", "CONFIRMED: File exists at ${tempCroppedFile.absolutePath}, Size: $fileSize bytes")
+                if (fileSize == 0L) {
+                    Log.e("CroppingFragment", "ERROR: Cropped file for '$areaName' exists BUT IS EMPTY: ${tempCroppedFile.absolutePath}. URI will likely fail.")
+                    // Handle error: Do not proceed with this file, maybe show an error to the user.
+                    recipeAreasViewModel.setCropError("Failed to save cropped $areaName correctly (empty file).")
+                    return // Exit because the file is invalid
+                }
+            } else {
+                Log.e("CroppingFragment", "ERROR: Cropped file for '$areaName' DOES NOT EXIST or save failed at ${tempCroppedFile.absolutePath} after attempting save.")
+                // Handle error: Do not proceed to generate a URI.
+                recipeAreasViewModel.setCropError("Failed to save cropped $areaName.")
+                return // Exit because the file is invalid or wasn't saved
+            }
+
             val croppedFileUri = FileProvider.getUriForFile(
                 requireContext(),
                 "${requireContext().packageName}.provider",
@@ -208,17 +241,90 @@ class CroppingFragment : Fragment() {
     // setupManualSelection(), normalizeAndClampRect(), updateOverlayBounds() remain similar
     // ... (ensure they are present and working) ...
 
-    private fun setupManualSelection() { /* ... same as before ... */ }
-    private fun normalizeAndClampRect(rect: RectF, viewWidth: Int, viewHeight: Int) { /* ... same as before ... */ }
-    private fun updateOverlayBounds() { /* ... same as before ... */ }
+// In CroppingFragment.kt
+
+    private fun setupManualSelection() {
+        binding.imageViewToCrop.setOnTouchListener { view, event ->
+            val viewWidth = view.width
+            val viewHeight = view.height
+            if (viewWidth == 0 || viewHeight == 0) { // ImageView not laid out yet
+                Log.w("CroppingFragment", "ImageView dimensions are zero in onTouch.")
+                return@setOnTouchListener false // Or true, depending on if you want to consume
+            }
+
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.x
+                    startY = event.y
+                    selectionRect.set(startX, startY, startX, startY)
+                    binding.selectionOverlay.visibility = View.VISIBLE
+                    updateOverlayBounds() // Initial tiny overlay at start point
+                    Log.d("CroppingFragment", "ACTION_DOWN: ($startX, $startY)")
+                    true // Consume the event
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val currentX = event.x
+                    val currentY = event.y
+                    normalizeAndClampRect(selectionRect, startX, startY, currentX, currentY, viewWidth, viewHeight)
+                    updateOverlayBounds()
+                    Log.d("CroppingFragment", "ACTION_MOVE: Rect: $selectionRect")
+                    true // Consume the event
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    // Optional: You might want to do a final updateOverlayBounds()
+                    // Check if selectionRect is valid (width > 0, height > 0)
+                    if (selectionRect.width() <= 0 || selectionRect.height() <= 0) {
+                        Log.d("CroppingFragment", "ACTION_UP: Invalid selection, resetting overlay.")
+                        // binding.selectionOverlay.visibility = View.GONE // Or just leave it if it's tiny
+                    } else {
+                        Log.d("CroppingFragment", "ACTION_UP: Final Selection: $selectionRect")
+                    }
+                    true // Consume the event
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun normalizeAndClampRect(rect: RectF, x1: Float, y1: Float, x2: Float, y2: Float, viewWidth: Int, viewHeight: Int) {
+        rect.left = Math.min(x1, x2).coerceIn(0f, viewWidth.toFloat())
+        rect.top = Math.min(y1, y2).coerceIn(0f, viewHeight.toFloat())
+        rect.right = Math.max(x1, x2).coerceIn(0f, viewWidth.toFloat())
+        rect.bottom = Math.max(y1, y2).coerceIn(0f, viewHeight.toFloat())
+    }
+
+    private fun updateOverlayBounds() {
+        if (selectionRect.isEmpty) { // Or check width/height
+            binding.selectionOverlay.visibility = View.GONE
+            return
+        }
+        // Ensure overlay is visible if rect is not empty
+        if (binding.selectionOverlay.visibility != View.VISIBLE && (selectionRect.width() > 0 && selectionRect.height() >0)) {
+            binding.selectionOverlay.visibility = View.VISIBLE
+        }
+
+
+        val params = binding.selectionOverlay.layoutParams as? ViewGroup.MarginLayoutParams
+        if (params == null) {
+            Log.e("CroppingFragment", "SelectionOverlay LayoutParams are not MarginLayoutParams")
+            return
+        }
+
+        params.width = selectionRect.width().toInt()
+        params.height = selectionRect.height().toInt()
+        params.leftMargin = selectionRect.left.toInt()
+        params.topMargin = selectionRect.top.toInt()
+
+        binding.selectionOverlay.layoutParams = params
+        // binding.selectionOverlay.requestLayout() // Often implicitly handled by setting layoutParams on some views
+        Log.d("CroppingFragment", "Overlay updated: L=${params.leftMargin}, T=${params.topMargin}, W=${params.width}, H=${params.height}")
+
+    }
 
 
     override fun onDestroyView() {
         super.onDestroyView()
         // Clean up temporary files if they weren't passed on or if fragment is destroyed mid-process
-        tempTitleFile?.delete()
-        tempIngredientsFile?.delete()
-        tempPreparationFile?.delete()
         _binding = null
     }
 }

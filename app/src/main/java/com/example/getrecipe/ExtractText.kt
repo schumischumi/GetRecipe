@@ -7,29 +7,17 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import com.googlecode.tesseract.android.TessBaseAPI
-// import com.googlecode.tesseract.android.TessBaseAPI.ProgressValues // Keep if you uncomment init block
 import java.io.File
 import java.util.Locale
 import kotlin.concurrent.Volatile
-// import kotlin.text.toLowerCase // Not strictly needed if using Locale.ROOT for safety
-
 
 class ExtractText(application: Application) : AndroidViewModel(application) {
-    // TODO: Initialize tessApi properly, perhaps in initTesseract or an init block.
-    //  The 'TODO()' will cause a crash if tessApi is accessed before being initialized.
-    //  Consider making it lateinit if initialized in a dedicated method.
-    private lateinit var tessApi: TessBaseAPI // Changed to lateinit
+    private lateinit var tessApi: TessBaseAPI
 
-    // Original 'result' LiveData - If you intend to use this for general results
-    // in addition to specific area results, ensure its purpose is clear.
-    // If it's just a leftover, consider removing it to avoid confusion with _result.
-    val result = MutableLiveData<String>() // This is the one causing a clash with getResult()
+    val result = MutableLiveData<String>() // General result - consider its purpose
 
     var isInitialized: Boolean = false
         private set
-
-    // Using companion object TAG for consistency within this class
-    // private val TAG = "ExtractTextViewModel" // This was okay, but often ViewModel TAGs are in companion
 
     // --- Specific area results ---
     private val _titleResult = MutableLiveData<String?>()
@@ -42,42 +30,37 @@ class ExtractText(application: Application) : AndroidViewModel(application) {
     val preparationResult: LiveData<String?> = _preparationResult
 
     // --- Processing State LiveData ---
-    private val _processing = MutableLiveData<Boolean>()
-    val processing: LiveData<Boolean> = _processing // Public property, no explicit getProcessing() needed
+    private val _processing = MutableLiveData<Boolean>() // Overall processing state of the ViewModel for any area
+    val processing: LiveData<Boolean> = _processing
 
     private val _progress = MutableLiveData<String>()
-    val progress: LiveData<String> = _progress // Public property, no explicit getProgress() needed
+    val progress: LiveData<String> = _progress
+
+    // --- LiveData to signal completion of an individual OCR task ---
+    // Pair<areaType: String, success: Boolean>
+    private val _ocrTaskCompleted = MutableLiveData<Pair<String, Boolean>>()
+    val ocrTaskCompleted: LiveData<Pair<String, Boolean>> = _ocrTaskCompleted
 
     @Volatile
-    private var stopped = false
+    private var stopped = false // For user-initiated stop
 
     @Volatile
-    private var tessProcessing = false
+    private var tessProcessing = false // Tracks if Tesseract is busy with an image
 
     @Volatile
     private var recycleAfterProcessing = false
 
     private val recycleLock = Any()
 
-    // init {
-    //     tessApi = TessBaseAPI { progressValues: ProgressValues ->
-    //         _progress.postValue("Progress: " + progressValues.percent + " %") // Use _progress
-    //     }
-    //     // Show Tesseract version and library flavor at startup
-    //     _progress.value = String.format( // Use _progress
-    //         Locale.ENGLISH, "Tesseract %s (%s)",
-    //         tessApi.version, tessApi.libraryFlavor
-    //     )
-    // }
-
     override fun onCleared() {
-        super.onCleared() // It's good practice to call super.onCleared()
+        super.onCleared()
         synchronized(recycleLock) {
-            if (::tessApi.isInitialized) { // Check if lateinit var is initialized
+            if (::tessApi.isInitialized) {
                 if (tessProcessing) {
                     recycleAfterProcessing = true
+                    stopped = true // Ensure any ongoing process tries to stop
                     tessApi.stop()
-                    Log.d(TAG, "onCleared: Tess processing, will recycle after.")
+                    Log.d(TAG, "onCleared: Tess processing, will recycle after current task attempts to stop.")
                 } else {
                     tessApi.recycle()
                     Log.d(TAG, "onCleared: Tess recycled immediately.")
@@ -87,166 +70,169 @@ class ExtractText(application: Application) : AndroidViewModel(application) {
     }
 
     fun initTesseract(dataPath: String, language: String, engineMode: Int) {
-        // Initialize tessApi here if it's lateinit
+        if (::tessApi.isInitialized && isInitialized) {
+            Log.i(TAG, "Tesseract is already initialized.")
+            // Optionally re-initialize if parameters change, or just return
+            // For now, assume re-init if called again.
+        }
+
+        // Ensure not to re-initialize if tessProcessing is true to avoid interrupting ongoing OCR
+        if (tessProcessing) {
+            Log.w(TAG, "initTesseract called while processing, initialization deferred or skipped.")
+            // Maybe queue this or handle as an error
+            return
+        }
+
+        _progress.postValue("Initializing Tesseract...")
         tessApi = TessBaseAPI { progressValues: TessBaseAPI.ProgressValues ->
             _progress.postValue("Progress: " + progressValues.percent + " %")
         }
-        // Show Tesseract version and library flavor at startup (optional, can be here or in an init block)
-        _progress.value = String.format(
-            Locale.ENGLISH, "Tesseract %s (%s)",
-            tessApi.version, tessApi.libraryFlavor
-        )
-
         Log.i(
             TAG, "Initializing Tesseract with: dataPath = [$dataPath], " +
                     "language = [$language], engineMode = [$engineMode]"
         )
         try {
+            // It's good practice to run init on a background thread if it's potentially long
+            // For simplicity here, keeping it synchronous as in original
             isInitialized = tessApi.init(dataPath, language, engineMode)
-            if (!isInitialized) {
+            if (isInitialized) {
+                _progress.postValue(
+                    String.format(
+                        Locale.ENGLISH, "Tesseract %s (%s) initialized.",
+                        tessApi.version, tessApi.libraryFlavor
+                    )
+                )
+            } else {
                 Log.e(TAG, "Tesseract initialization failed (init returned false).")
+                _progress.postValue("Tesseract initialization failed.")
             }
         } catch (e: IllegalArgumentException) {
             isInitialized = false
             Log.e(TAG, "Cannot initialize Tesseract (IllegalArgumentException):", e)
+            _progress.postValue("Tesseract init error: ${e.message}")
         } catch (e: Exception) {
             isInitialized = false
             Log.e(TAG, "Unknown error during Tesseract initialization:", e)
+            _progress.postValue("Tesseract init error: ${e.message}")
         }
     }
 
     fun recognizeImage(imagePath: File, areaType: String) {
+        val areaTypeLower = areaType.toLowerCase(Locale.ROOT)
+
         if (!isInitialized) {
-            Log.e(TAG, "recognizeImage: Tesseract is not initialized for $areaType")
-            // Optionally post an error to the specific LiveData
-            postErrorToRelevantLiveData(areaType, "Tesseract not initialized.")
+            Log.e(TAG, "recognizeImage: Tesseract is not initialized for $areaTypeLower")
+            postErrorToRelevantLiveData(areaTypeLower, "Tesseract not initialized.")
+            _ocrTaskCompleted.postValue(Pair(areaTypeLower, false)) // Signal completion (failure)
             return
         }
+
+        // This check is crucial for sequential processing
         if (tessProcessing) {
-            Log.w(TAG, "recognizeImage: Processing is already in progress. Request for $areaType ignored.")
-            // Optionally post an error or queue the request
-            postErrorToRelevantLiveData(areaType, "Another OCR process is active.")
+            Log.w(TAG, "recognizeImage: Processing is already in progress. Request for $areaTypeLower ignored or queued.")
+            postErrorToRelevantLiveData(areaTypeLower, "Another OCR process is active.")
+            _ocrTaskCompleted.postValue(Pair(areaTypeLower, false)) // Signal completion (failure due to being busy)
             return
         }
-        tessProcessing = true
 
-        // result.value = "" // This refers to the public 'result' MutableLiveData.
-        // If it's for general/old results, it's fine.
-        // If it was meant for _result, it's different.
+        tessProcessing = true // Mark Tesseract as busy
+        _processing.postValue(true) // Update overall processing state
+        stopped = false // Reset stopped flag for the new task
 
-        _processing.value = true // Use the backing field for the property
-        stopped = false
-
-        when (areaType.toLowerCase(Locale.ROOT)) {
-            "title" -> _titleResult.postValue(null) // Clear previous specific result
+        // Clear previous specific result for the current areaType
+        when (areaTypeLower) {
+            "title" -> _titleResult.postValue(null)
             "ingredients" -> _ingredientsResult.postValue(null)
             "preparation" -> _preparationResult.postValue(null)
         }
-        _progress.postValue("Processing $areaType...") // Use backing field
+        _progress.postValue("Processing $areaTypeLower...")
 
-        Thread {
+        Thread { // Tesseract operations should be off the main thread
+            var success = false
             try {
                 tessApi.setImage(imagePath)
-                // Consider making pageSegMode configurable if needed
-                tessApi.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO_OSD
+                tessApi.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO_OSD // Or your preferred mode
 
                 val startTime = SystemClock.uptimeMillis()
-                // tessApi.getHOCRText(0) // If you use this, the result might be HOCR, not plain text
-                val text = tessApi.utF8Text ?: ""
-                // It's good practice to clear the Tesseract internal data after getting the text
-                // if you are done with this specific image and settings.
-                // tessApi.clear() // Done inside loop if processing multiple images, or at end.
-                // For single image per call, here is fine.
+                val text = if (!stopped) tessApi.utF8Text ?: "" else "OCR stopped by user."
 
-                when (areaType.toLowerCase(Locale.ROOT)) {
-                    "title" -> _titleResult.postValue(text)
-                    "ingredients" -> _ingredientsResult.postValue(text)
-                    "preparation" -> _preparationResult.postValue(text)
-                    else -> {
-                        Log.w(TAG, "Unrecognized areaType: $areaType for text: $text")
-                        // this.result.postValue("For $areaType: $text") // Post to the public 'result'
+                if (!stopped) {
+                    when (areaTypeLower) {
+                        "title" -> _titleResult.postValue(text)
+                        "ingredients" -> _ingredientsResult.postValue(text)
+                        "preparation" -> _preparationResult.postValue(text)
+                        else -> {
+                            Log.w(TAG, "Unrecognized areaType: $areaTypeLower for text: $text")
+                            this.result.postValue("For $areaTypeLower (unrecognized): $text")
+                        }
                     }
-                }
-
-                // If 'this.result' is for a general combined result, update it here.
-                // If not, the line 'this.result.postValue(text)' might be redundant
-                // if specific area results are what you need.
-                // this.result.postValue(text) // This posts the current area's text to the general 'result'
-
-                if (stopped) {
-                    _progress.postValue("$areaType: Stopped.")
-                } else {
                     val duration = SystemClock.uptimeMillis() - startTime
                     _progress.postValue(
                         String.format(
                             Locale.ENGLISH,
-                            "$areaType: Completed in %.3fs.", (duration / 1000f)
+                            "$areaTypeLower: Completed in %.3fs.", (duration / 1000f)
                         )
                     )
+                    success = true
+                } else {
+                    _progress.postValue("$areaTypeLower: Stopped.")
+                    postErrorToRelevantLiveData(areaTypeLower, "OCR stopped by user.")
+                    success = false // Not successful if stopped
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Error during OCR for $areaType", e)
-                postErrorToRelevantLiveData(areaType, "OCR Error: ${e.message}")
-                _progress.postValue("$areaType: Error.") // Update progress on error
+                Log.e(TAG, "Error during OCR for $areaTypeLower", e)
+                postErrorToRelevantLiveData(areaTypeLower, "OCR Error: ${e.message}")
+                _progress.postValue("$areaTypeLower: Error.")
+                success = false
             } finally {
-                // tessApi.clear() // Clear Tesseract's internal state for the image.
-                // Good to do this before releasing tessProcessing flag.
-                if(::tessApi.isInitialized) tessApi.clear()
-
+                if (::tessApi.isInitialized) {
+                    tessApi.clear() // Clear Tesseract's internal state for the image.
+                }
 
                 synchronized(recycleLock) {
-                    tessProcessing = false
-                    _processing.postValue(false) // Update processing state AFTER this operation
+                    tessProcessing = false // Free up Tesseract for the next task
+                    _processing.postValue(false) // Update overall processing state
+
                     if (recycleAfterProcessing) {
-                        if (::tessApi.isInitialized) { // Check before recycling
+                        if (::tessApi.isInitialized) {
                             tessApi.recycle()
-                            Log.d(TAG, "Tesseract recycled post-processing for $areaType.")
-                            recycleAfterProcessing = false // Reset flag
+                            Log.d(TAG, "Tesseract recycled post-processing for $areaTypeLower (onCleared was pending).")
+                            recycleAfterProcessing = false
+                            isInitialized = false // Mark as not initialized after recycle
                         }
                     }
                 }
+                // Signal completion of this specific OCR task
+                _ocrTaskCompleted.postValue(Pair(areaTypeLower, success))
             }
         }.start()
     }
 
     private fun postErrorToRelevantLiveData(areaType: String, errorMessage: String) {
         val fullError = "Error for $areaType: $errorMessage"
+        // Ensure this runs on the main thread if observers are sensitive
+        // _progress.postValue(fullError) // Or a specific error LiveData
         when (areaType.toLowerCase(Locale.ROOT)) {
             "title" -> _titleResult.postValue(fullError)
             "ingredients" -> _ingredientsResult.postValue(fullError)
             "preparation" -> _preparationResult.postValue(fullError)
-            else -> this.result.postValue(fullError) // Post to general result if area unknown
+            else -> this.result.postValue(fullError)
         }
     }
 
-
     fun stop() {
-        if (!tessProcessing) { // Check if actually processing
+        if (!tessProcessing) {
             Log.d(TAG, "Stop called, but not currently processing.")
             return
         }
-        _progress.value = "Stopping..." // Use backing field
-        stopped = true
-        if (::tessApi.isInitialized) { // Check before calling stop
+        _progress.postValue("Stopping current OCR task...")
+        stopped = true // Signal the processing thread to stop
+        if (::tessApi.isInitialized) {
             tessApi.stop() // Request Tesseract to stop its current operation
         }
     }
 
-    // REMOVE these explicit getter functions:
-    // fun getProcessing(): LiveData<Boolean> {
-    //     return processing // or _processing
-    // }
-
-    // fun getProgress(): LiveData<String> {
-    //     return progress // or _progress
-    // }
-
-    // fun getResult(): LiveData<String> {
-    //     return result
-    // }
-
     companion object {
-        // Renamed TAG to avoid conflict if this class was also named "MainViewModel"
         private const val TAG = "ExtractTextVM"
     }
 }
