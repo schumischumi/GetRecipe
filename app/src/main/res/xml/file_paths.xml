@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="my_cached_files" path="." />
+    <!-- Add other paths if you save files elsewhere, e.g., getExternalFilesDir -->
+    <!-- <external-files-path name="my_external_cropped_images" path="my_cropped_images/" /> -->
+</paths>
