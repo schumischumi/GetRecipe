@@ -32,12 +32,6 @@ class MainActivity : AppCompatActivity() {
         appBarConfiguration = AppBarConfiguration(navController.graph)
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        binding.fab.setOnClickListener { view ->
-            Snackbar.make(view, "Image recognition started!", Snackbar.LENGTH_LONG)
-                .setAnchorView(R.id.fab)
-                .show()
-
-        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

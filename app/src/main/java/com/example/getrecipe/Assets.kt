@@ -24,14 +24,6 @@ object Assets {
      * Returns locally accessible directory path which contains the "tessdata" subdirectory
      * with *.traineddata files.
      */
-    fun getTessDataPath(context: Context): String {
-        return getLocalDir(context).absolutePath
-    }
-
-
-    fun getImageFile(context: Context): File {
-        return File(getLocalDir(context), Config.IMAGE_NAME)
-    }
 
     private fun getTargetFileForAsset(context: Context, assetName: String): File {
         val localDir = getLocalDir(context)
@@ -46,27 +38,6 @@ object Assets {
         return getLocalDir(context).absolutePath
     }
 
-
-    fun getImageBitmap(context: Context): Bitmap? {
-        extractAssets(context) // Ensure assets are extracted
-
-        // Config.IMAGE_NAME should NOT be placed in tessdata subdir by getTargetFileForAsset
-        val imageFile = getTargetFileForAsset(context, Config.IMAGE_NAME)
-        return if (imageFile.exists()) {
-            try {
-                BitmapFactory.decodeFile(imageFile.absolutePath)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error decoding image file: ${imageFile.absolutePath}", e)
-                null
-            }
-        } else {
-            Log.e(TAG, "Image file not found in internal storage: ${imageFile.absolutePath}")
-            null
-        }
-    }
-    fun getAssetFileInInternalStorage(context: Context, assetFileName: String): File {
-        return File(getLocalDir(context), assetFileName)
-    }
 
     fun extractAssets(context: Context) {
         val localDir = getLocalDir(context)
@@ -87,8 +58,7 @@ object Assets {
         }
 
         val assetsToExtract = listOf(
-            Config.IMAGE_NAME,
-            Config.TESS_DATA_DEU
+            Config.TESS_DATA_ENG
             // Add other asset file names here, including other .traineddata files
         ).distinct()
 
@@ -114,18 +84,21 @@ object Assets {
         destinationFile: File
     ) {
         // Ensure parent directory for the destination file exists
-        destinationFile.parentFile?.mkdirs()
+        destinationFile.parentFile?.mkdirs() // This is good, ensures tessdataDir is created
+
+        Log.d(TAG, "Attempting to copy asset: '$assetNameInApk' to '${destinationFile.absolutePath}'") // ADD THIS LOG
 
         try {
             // Open the asset using its path within the assets folder
-            assetManager.open(assetNameInApk).use { inputStream ->
+            assetManager.open(assetNameInApk).use { inputStream -> // This is where it might fail if assetNameInApk is wrong
+                Log.d(TAG, "Successfully opened asset: '$assetNameInApk'") // ADD THIS LOG
                 FileOutputStream(destinationFile).use { outputStream ->
                     inputStream.copyTo(outputStream)
                     Log.i(TAG, "Successfully copied '$assetNameInApk' to '${destinationFile.absolutePath}'")
                 }
             }
         } catch (e: IOException) {
-            Log.e(TAG, "Error copying asset '$assetNameInApk' to '${destinationFile.absolutePath}'", e)
+            Log.e(TAG, "Error copying asset '$assetNameInApk' to '${destinationFile.absolutePath}'", e) // IMPORTANT LOG
             if (destinationFile.exists()) {
                 destinationFile.delete()
             }
