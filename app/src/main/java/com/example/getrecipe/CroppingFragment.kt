@@ -1,21 +1,26 @@
 package com.example.getrecipe // Your package
 
 import android.graphics.Bitmap
+import android.graphics.ImageDecoder.*
 import android.graphics.Matrix
 import android.graphics.RectF
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.content.FileProvider
+import androidx.core.graphics.decodeBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 
 import androidx.navigation.fragment.findNavController
+import androidx.navigation.fragment.navArgs
 import com.example.getrecipe.databinding.FragmentCroppingBinding // Your binding
 import java.io.File
 import java.io.FileOutputStream
@@ -23,6 +28,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.net.toUri
 
 // Assuming your Assets class for the source image
 // object Assets { ... }
@@ -38,6 +44,7 @@ class CroppingFragment : Fragment() {
 
     private var _binding: FragmentCroppingBinding? = null
     private val binding get() = _binding!!
+    private val args: CroppingFragmentArgs by navArgs()
 
     // Use the new ViewModel
     private val recipeAreasViewModel: RecipeAreasViewModel by activityViewModels()
@@ -52,6 +59,7 @@ class CroppingFragment : Fragment() {
     private var tempTitleFile: File? = null
     private var tempIngredientsFile: File? = null
     private var tempPreparationFile: File? = null
+    private var currentImageUri: Uri? = null
 
 
     override fun onCreateView(
@@ -64,9 +72,34 @@ class CroppingFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        try {
+            val imageUriString = args.imageUri
+            currentImageUri = imageUriString.toUri()
+            Log.d("CroppingFragment", "Received image URI: $currentImageUri")
 
+            // Convert the URI to a Bitmap
+            currentImageUri?.let { uri ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    val source = android.graphics.ImageDecoder.createSource(requireContext().contentResolver, uri)
+                    originalBitmap = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                        decoder.isMutableRequired = true
+                    }
 
-        originalBitmap = Assets.getImageBitmap(requireContext())
+                } else {
+                    // For older versions, use MediaStore.Images.Media.getBitmap (deprecated in API 29)
+                    // This requires READ_EXTERNAL_STORAGE permission for Uris not from your own app
+                    // or if it's not a MediaStore URI that your app has direct access to.
+                    // However, Uris from ACTION_GET_CONTENT or ACTION_IMAGE_CAPTURE (via FileProvider)
+                    // usually grant temporary access.
+                    @Suppress("DEPRECATION")
+                    originalBitmap = MediaStore.Images.Media.getBitmap(requireContext().contentResolver, uri)
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e("CroppingFragment", "Error parsing URI or loading Bitmap from URI: ${args.imageUri}", e)
+            originalBitmap = null // Ensure bitmap is null on error
+        }
 
         if (originalBitmap != null) {
             binding.imageViewToCrop.setImageBitmap(originalBitmap)
@@ -194,10 +227,10 @@ class CroppingFragment : Fragment() {
                 recipeAreasViewModel.setCropError("Failed to save cropped $areaName.")
                 return // Exit because the file is invalid or wasn't saved
             }
-
+            val authority = "${requireContext().packageName}.fileprovider"
             val croppedFileUri = FileProvider.getUriForFile(
                 requireContext(),
-                "${requireContext().packageName}.provider",
+                authority,
                 tempCroppedFile
             )
 

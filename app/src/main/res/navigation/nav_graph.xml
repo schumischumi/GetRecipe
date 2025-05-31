@@ -10,9 +10,8 @@
         android:name="com.example.getrecipe.FirstFragment"
         android:label="@string/first_fragment_label"
         tools:layout="@layout/fragment_first">
-
         <action
-            android:id="@+id/first_to_crop"
+            android:id="@+id/action_FirstFragment_to_croppingFragment"
             app:destination="@id/croppingFragment" />
     </fragment>
     <fragment
@@ -25,8 +24,12 @@
         android:name="com.example.getrecipe.CroppingFragment"
         android:label="fragment_cropping"
         tools:layout="@layout/fragment_cropping" >
+        <argument
+            android:name="imageUri"
+            app:argType="string" />
         <action
             android:id="@+id/crop_to_second"
             app:destination="@id/SecondFragment" />
     </fragment>
+
 </navigation>

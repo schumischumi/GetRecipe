@@ -205,7 +205,7 @@ class SecondFragment : Fragment() {
 
         extractTextViewModel.titleResult.observe(viewLifecycleOwner) { titleText ->
             if (titleText != null) {
-                binding.textViewTitleResult.text = titleText // Display the full string (text or error message)
+                binding.textViewTitleResult.text = titleText.trim().replace("\n", " ")  // Display the full string (text or error message)
                 Log.i("SecondFragment", "Title OCR Data: $titleText")
             } else {
                 // If null means it was cleared before processing this area

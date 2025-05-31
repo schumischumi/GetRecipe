@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <cache-path name="my_cached_files" path="." />
-    <!-- Add other paths if you save files elsewhere, e.g., getExternalFilesDir -->
-    <!-- <external-files-path name="my_external_cropped_images" path="my_cropped_images/" /> -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="my_cache_images" path="." />
+    <files-path name="my_images" path="images/" />
+    <external-files-path
+        name="my_images"
+        path="Pictures" />
+
 </paths>
