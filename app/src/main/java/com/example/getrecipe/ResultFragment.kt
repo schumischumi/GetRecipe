@@ -46,7 +46,7 @@ class ResultFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        Assets.extractAssets(requireContext())
+
 
         binding.textViewProcessingStatus.text = "Waiting for all cropped recipe areas..."
 

@@ -15,8 +15,8 @@
             app:destination="@id/croppingFragment" />
     </fragment>
     <fragment
-        android:id="@+id/SecondFragment"
-        android:name="com.example.getrecipe.SecondFragment"
+        android:id="@+id/ResultFragment"
+        android:name="com.example.getrecipe.ResultFragment"
         android:label="@string/second_fragment_label"
         tools:layout="@layout/fragment_second"/>
     <fragment
@@ -29,7 +29,7 @@
             app:argType="string" />
         <action
             android:id="@+id/crop_to_second"
-            app:destination="@id/SecondFragment" />
+            app:destination="@id/ResultFragment" />
     </fragment>
 
 </navigation>

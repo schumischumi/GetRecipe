@@ -58,7 +58,8 @@ object Assets {
         }
 
         val assetsToExtract = listOf(
-            Config.TESS_DATA_ENG
+            Config.TESS_DATA_ENG,
+            Config.DEMO_PIC
             // Add other asset file names here, including other .traineddata files
         ).distinct()
 

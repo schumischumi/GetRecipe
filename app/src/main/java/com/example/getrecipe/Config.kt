@@ -11,4 +11,6 @@ object Config {
     const val TESS_DATA_ENG: String = "eng.traineddata"
 
     const val TESSDATA_SUBDIR = "tessdata"
+
+    const val DEMO_PIC = "fake_recipe.jpg"
 }

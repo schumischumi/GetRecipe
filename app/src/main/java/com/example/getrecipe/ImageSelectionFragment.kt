@@ -21,7 +21,10 @@ import androidx.navigation.fragment.findNavController
 import coil.load // Using Coil for image loading, ensure it's in your dependencies
 import com.example.getrecipe.databinding.FragmentFirstBinding
 import java.io.File
+import java.io.FileOutputStream
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -41,6 +44,7 @@ class ImageSelectionFragment : Fragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Assets.extractAssets(requireContext())
 
         requestCameraPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
@@ -112,6 +116,59 @@ class ImageSelectionFragment : Fragment() {
                 val action = ImageSelectionFragmentDirections.actionFirstFragmentToCroppingFragment(uri.toString())
                 findNavController().navigate(action)
             } ?: Toast.makeText(requireContext(), "Please select an image first.", Toast.LENGTH_SHORT).show()
+        }
+        binding.buttonDemoPic.setOnClickListener {
+            Log.d("ImageSelectionFragment", "Demo Picture button clicked")
+            getUriForDemoAsset()?.let { demoUri ->
+                currentPhotoUri = demoUri // Crucial: Set the master URI variable
+                binding.imageViewPreview.load(demoUri) {
+                    placeholder(R.drawable.ic_launcher_background)
+                    error(com.google.android.material.R.drawable.mtrl_ic_error)
+                }
+                binding.buttonNext.isEnabled = true // Enable the next button
+                Log.i("ImageSelectionFragment", "Demo image loaded and previewed. URI: $demoUri. Waiting for 'Next' button.")
+            } ?: run {
+                Log.e("ImageSelectionFragment", "Failed to get URI for demo asset.")
+            }
+        }
+    }
+    private fun getUriForDemoAsset(): Uri? {
+        val context = requireContext()
+        val assetManager = context.assets
+        var inputStream: InputStream? = null
+        var outputStream: OutputStream? = null
+        val tempFile: File
+
+        try {
+            val outputDir = context.cacheDir
+            tempFile = File(outputDir, "temp_demo_asset.jpeg")
+
+            inputStream = assetManager.open(Config.DEMO_PIC)
+            outputStream = FileOutputStream(tempFile)
+            copyFile(inputStream, outputStream)
+
+            val authority = "${context.packageName}.fileprovider"
+            return FileProvider.getUriForFile(context, authority, tempFile)
+
+        } catch (e: IOException) {
+            Log.e("ImageSelectionFragment", "Error copying demo asset or getting URI: ${e.message}", e)
+            return null
+        } finally {
+            try {
+                inputStream?.close()
+                outputStream?.close()
+            } catch (e: IOException) {
+                Log.e("ImageSelectionFragment", "Error closing streams: ${e.message}", e)
+            }
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun copyFile(inputStream: InputStream, outputStream: OutputStream) {
+        val buffer = ByteArray(1024)
+        var read: Int
+        while (inputStream.read(buffer).also { read = it } != -1) {
+            outputStream.write(buffer, 0, read)
         }
     }
 
